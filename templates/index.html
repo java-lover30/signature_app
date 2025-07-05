@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Signature Web App for Parents(By Patrice Nangaa)</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.5/dist/signature_pad.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 30px;
+      background-color: #f4f7f6;
+      color: #333;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h2 {
+      color: #2c3e50;
+      margin-bottom: 25px;
+    }
+    canvas {
+      border: 1px solid #c2d1d0;
+      margin-bottom: 15px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+      background-color: #fff;
+    }
+    #pdf-canvas {
+      cursor: crosshair;
+      max-width: 90%;
+      height: auto;
+    }
+    #sig-canvas {
+      border: 1px solid #a8b8b7;
+      background-color: #f9fbfb;
+    }
+    .row {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+    input[type="file"], button {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      margin-right: 10px;
+    }
+    input[type="file"] {
+      background-color: #e0e9e8;
+      color: #333;
+    }
+    input[type="file"]:hover {
+      background-color: #d1dbda;
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+    }
+    button:hover {
+      background-color: #2980b9;
+      transform: translateY(-2px);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    #prev-page, #next-page {
+      background-color: #5bc0de;
+    }
+    #prev-page:hover, #next-page:hover {
+      background-color: #3a80a2;
+    }
+    a#download-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 25px;
+      background-color: #28a745;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+      transition: background-color 0.3s ease;
+    }
+    a#download-link:hover {
+      background-color: #218838;
+    }
+    span#page-num, span#page-count {
+      font-weight: bold;
+      color: #2c3e50;
+    }
+  </style>
+</head>
+<body>
+<h2>PDF Signature Tool (with Page Support)</h2>
+
+<input type="file" id="pdf-upload" accept="application/pdf"><br><br>
+<div class="row">
+  <button id="prev-page">Previous</button>
+  <span>Page: <span id="page-num">1</span> / <span id="page-count">1</span></span>
+  <button id="next-page">Next</button>
+</div>
+<canvas id="pdf-canvas"></canvas><br>
+
+<h3>Draw Signature:</h3>
+<canvas id="sig-canvas" width="300" height="100"></canvas><br>
+<button onclick="clearSignature()">Clear</button>
+
+<br><br>
+<button onclick="submitSignature()">Apply Signature</button>
+<a id="download-link" style="display:none">Download Signed PDF</a>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+const pdfCanvas = document.getElementById('pdf-canvas');
+const sigCanvas = document.getElementById('sig-canvas');
+const sigPad = new SignaturePad(sigCanvas);
+let pdfDoc = null, currentPage = 1, totalPages = 1, scale = 1.5;
+let clickX = 0, clickY = 0;
+
+const pdfUpload = document.getElementById('pdf-upload');
+pdfUpload.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  const fileReader = new FileReader();
+  fileReader.onload = function () {
+    const typedarray = new Uint8Array(this.result);
+    pdfjsLib.getDocument(typedarray).promise.then(function (pdf) {
+      pdfDoc = pdf;
+      totalPages = pdf.numPages;
+      document.getElementById('page-count').textContent = totalPages;
+      renderPage(currentPage);
+    });
+  };
+  fileReader.readAsArrayBuffer(file);
+});
+
+function renderPage(num) {
+  pdfDoc.getPage(num).then(function (page) {
+    const viewport = page.getViewport({ scale });
+    const context = pdfCanvas.getContext('2d');
+    pdfCanvas.width = viewport.width;
+    pdfCanvas.height = viewport.height;
+    page.render({ canvasContext: context, viewport });
+    document.getElementById('page-num').textContent = num;
+  });
+}
+
+document.getElementById('prev-page').addEventListener('click', () => {
+  if (currentPage <= 1) return;
+  currentPage--;
+  renderPage(currentPage);
+});
+
+document.getElementById('next-page').addEventListener('click', () => {
+  if (currentPage >= totalPages) return;
+  currentPage++;
+  renderPage(currentPage);
+});
+
+pdfCanvas.addEventListener('click', function (event) {
+  const rect = pdfCanvas.getBoundingClientRect();
+  clickX = event.clientX - rect.left;
+  clickY = event.clientY - rect.top;
+  alert(`Signature will be placed at: x=${clickX}, y=${clickY}, page=${currentPage}`);
+});
+
+function clearSignature() {
+  sigPad.clear();
+}
+
+function dataURLtoFile(dataurl, filename) {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while(n--) u8arr[n] = bstr.charCodeAt(n);
+  return new File([u8arr], filename, {type:mime});
+}
+
+async function submitSignature() {
+  if (!pdfUpload.files.length || sigPad.isEmpty()) {
+    alert("Please upload a PDF and draw a signature first.");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('pdf', pdfUpload.files[0]);
+  formData.append('signature', dataURLtoFile(sigPad.toDataURL(), 'signature.png'));
+  formData.append('page', currentPage - 1); // 0-based for backend
+  formData.append('x', clickX / scale);
+  formData.append('y', clickY / scale);
+
+  const res = await fetch('/upload', { method: 'POST', body: formData });
+  if (res.ok) {
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.getElementById('download-link');
+    link.href = url;
+    link.download = 'signed_document.pdf';
+    link.style.display = 'inline-block';
+    link.textContent = 'Download Signed PDF';
+  } else {
+    const err = await res.json();
+    alert("Error: " + err.error);
+  }
+}
+</script>
+</body>
+</html>
